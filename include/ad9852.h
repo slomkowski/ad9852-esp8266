@@ -6,26 +6,22 @@
  * AD9852 DDS driver for ESP8266 (ESP-07), software SPI.
  *
  * Pin wiring (AD9852 signal -> ESP-07 GPIO):
- *   MASTER_RESET -> GPIO15  (active HIGH; GPIO15 is pulled LOW at boot = chip not in reset)
- *   SCB          -> GPIO4   (active LOW chip select)
- *   IO_RESET     -> GPIO5   (active HIGH pulse, resets serial address counter)
- *   SCLK         -> GPIO14
- *   SDIO         -> GPIO13  (write-only; MISO not connected)
- *   I/O UD       -> GPIO12  (active HIGH pulse, latches written values)
+ *   MASTER_RESET    -> GPIO12  (active HIGH)
+ *   SCB  / RDB      -> GPIO15  (active LOW chip select; GPIO15 pull-down holds it LOW at boot,
+ *                               chip is "selected" until ad9852_init() runs — harmless, no SCLK)
+ *   IO_RESET / A2   -> GPIO13  (active HIGH pulse, resets serial address counter)
+ *   SCLK / WRB      -> GPIO2   (GPIO2 must be HIGH at boot; pull-up holds it HIGH until pinMode()
+ *                               is called; UART1 TX glitch on reset is cleared by MASTER_RESET)
+ *   I/O UD          -> GPIO4   (active HIGH pulse, latches written values)
+ *   SDIO / A0       -> GPIO5   (write-only; MISO not connected)
  */
 
-#define AD9852_PIN_MRESET   15
-#define AD9852_PIN_SCB      4
-#define AD9852_PIN_IORESET  5
-#define AD9852_PIN_SCLK     14
-#define AD9852_PIN_SDIO     13
-#define AD9852_PIN_IOUD     12
-
-/* System clock fed to the AD9852 core.
- * Set PLL_BYPASS in the control register so SYSCLK == REFCLK == 66.667 MHz.
- * Adjust AD9852_SYSCLK_HZ and the CTRL bytes in ad9852_init() if you use the
- * on-chip PLL instead. */
-#define AD9852_SYSCLK_HZ    66667000UL
+#define AD9852_PIN_MRESET   12
+#define AD9852_PIN_SCB      15
+#define AD9852_PIN_IORESET  13
+#define AD9852_PIN_SCLK     2
+#define AD9852_PIN_IOUD     4
+#define AD9852_PIN_SDIO     5
 
 #ifdef __cplusplus
 extern "C" {
@@ -33,7 +29,9 @@ extern "C" {
 
 void ad9852_init(void);
 
-void ad9852_set_freq(uint32_t freq_hz);
+void ad9852_set_freq(double freq_hz);
+
+uint32_t ad9852_read_control_reg(void);
 
 #ifdef __cplusplus
 }

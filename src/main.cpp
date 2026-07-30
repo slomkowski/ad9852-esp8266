@@ -8,7 +8,7 @@
 #define AP_PASS ""
 
 static ESP8266WebServer server(80);
-static uint32_t current_freq = 10000; /* Hz, persists in RAM across requests */
+static double current_freq = 100000; /* Hz, persists in RAM across requests */
 
 /* ---- HTML page stored in flash (PROGMEM) to save heap ------------------- */
 static constexpr char HTML[] PROGMEM = R"html(<!DOCTYPE html>
@@ -64,11 +64,11 @@ static void handle_root() {
 
 static void handle_set() {
     if (server.hasArg("freq")) {
-        long v = server.arg("freq").toInt();
+        double v = server.arg("freq").toDouble();
         if (v > 0) {
-            current_freq = (uint32_t) v;
+            current_freq = v;
             ad9852_set_freq(current_freq);
-            Serial.printf("Frequency set to %u Hz\n", current_freq);
+            Serial.printf("Frequency set to %f Hz\n", current_freq);
         }
     }
     server.sendHeader("Location", "/");
@@ -84,7 +84,7 @@ void setup() {
 
     ad9852_init();
     ad9852_set_freq(current_freq);
-    Serial.printf("DDS init OK — %u Hz\n", current_freq);
+    Serial.printf("DDS init OK — %f Hz\n", current_freq);
 
     WiFi.mode(WIFI_AP);
     WiFi.softAPConfig(
