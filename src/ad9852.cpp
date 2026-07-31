@@ -9,40 +9,29 @@
 #define AD9852_PIN_IOUD     4
 #define AD9852_PIN_SDIO     5
 
-// TODO PROPER NAMES
-#define REG_PHASE_ADJUST_REGISTER1				0x00
-#define REG_PHASE_ADJUST_REGISTER2				0x01
-#define REG_FREQUENCY_TUNING_WORD1			0x02
-#define REG_FREQUENCY_TUNING_WORD2			0x03
-#define DFW				0x04
-#define UC				0x05
-#define RRC				0x06
-#define REG_CONTROL			0x07
-#define OSKIM			0x08
-#define OSKQM			0x09
-#define OSKRR			0x0A
-#define QDAC			0x0B
+#define REG_PHASE_ADJUST_REGISTER1  0x00
+#define REG_PHASE_ADJUST_REGISTER2  0x01
+#define REG_FREQUENCY_TUNING_WORD1  0x02
+#define REG_FREQUENCY_TUNING_WORD2  0x03
+#define DFW     0x04
+#define UC      0x05
+#define RRC     0x06
+#define REG_CONTROL 0x07
+#define OSKIM   0x08
+#define OSKQM   0x09
+#define OSKRR   0x0A
+#define QDAC    0x0B
+
+/* Reference clock fed to the AD9852. SYSCLK = AD9852_REFCLK_HZ * multiplier. */
+static constexpr uint32_t AD9852_REFCLK_HZ = 20000000UL;
+
+/* 2^48 as a compile-time constant — avoids runtime pow() call */
+static const double FQ = pow(2.0, 48.0) / static_cast<double>(AD9852_REFCLK_HZ);
 
 
-/* System clock fed to the AD9852 core.
- * Set PLL_BYPASS in the control register so SYSCLK == REFCLK == 66.667 MHz.
- * Adjust AD9852_SYSCLK_HZ and the CTRL bytes in ad9852_init() if you use the
- * on-chip PLL instead. */
-// #define AD9852_SYSCLK_HZ    66667000UL
-constexpr uint32 AD9852_SYSCLK_HZ = 20000000UL;
-
-constexpr uint8 CLOCK_MULTIPLIER = 8;
-static_assert(CLOCK_MULTIPLIER >= 4);
-static_assert(CLOCK_MULTIPLIER <= 20);
-
-/*
- * FTW = (desired_freq_hz * 2^48) / SYSCLK_HZ
- * Precompute the constant: FQ = 2^48 / SYSCLK_HZ
- */
-static const double FQ = pow(2.0, 48.0) / static_cast<double>(AD9852_SYSCLK_HZ * CLOCK_MULTIPLIER);
-
-/* Maximum safe output frequency: ~40 % of SYSCLK (comfortable DAC margin) */
-static const uint32_t FREQ_MAX = (uint32_t) (AD9852_SYSCLK_HZ * CLOCK_MULTIPLIER * 0.4);
+/* Runtime state */
+static uint8_t s_mult = 8;
+static double s_freq = 0.0;
 
 
 static void write_byte(const uint8_t data) {
@@ -59,8 +48,6 @@ static void write_byte(const uint8_t data) {
     }
 }
 
-
-/* SDIO is bidirectional — switch to input for reads, restore to output after */
 static uint8_t read_byte() {
     uint8_t data = 0;
     pinMode(AD9852_PIN_SDIO, INPUT);
@@ -77,7 +64,6 @@ static uint8_t read_byte() {
     return data;
 }
 
-/* Reset the AD9852 internal serial-address pointer before each transaction */
 static void io_reset() {
     digitalWrite(AD9852_PIN_IORESET, HIGH);
     delay(1);
@@ -94,12 +80,17 @@ static void chip_release() {
     digitalWrite(AD9852_PIN_SCB, HIGH);
 }
 
-/* Pulse I/O UD to latch written register values into the active registers */
 static void io_update() {
     digitalWrite(AD9852_PIN_IOUD, HIGH);
     delayMicroseconds(10);
     digitalWrite(AD9852_PIN_IOUD, LOW);
-    //delayMicroseconds(10);
+}
+
+static void master_reset() {
+    digitalWrite(AD9852_PIN_MRESET, HIGH);
+    delay(100);
+    digitalWrite(AD9852_PIN_MRESET, LOW);
+    delay(100);
 }
 
 void AD9854_SendData(u8 _register, u8 const *data, u8 ByteNum) {
@@ -110,11 +101,19 @@ void AD9854_SendData(u8 _register, u8 const *data, u8 ByteNum) {
     }
 }
 
-static void master_reset() {
-    digitalWrite(AD9852_PIN_MRESET, HIGH);
-    delay(100);
-    digitalWrite(AD9852_PIN_MRESET, LOW);
-    delay(100);
+static void write_control() {
+    uint8_t ctrl[4] = {
+        0b00010100,
+        s_mult,
+        0b00000000,
+        0b00000000,
+    };
+
+    chip_select();
+    AD9854_SendData(REG_CONTROL, ctrl, 4);
+    delay(50);
+    io_update();
+    chip_release();
 }
 
 void ad9852::init() {
@@ -125,7 +124,7 @@ void ad9852::init() {
     pinMode(AD9852_PIN_SDIO, OUTPUT);
     pinMode(AD9852_PIN_IOUD, OUTPUT);
 
-    digitalWrite(AD9852_PIN_MRESET, LOW); /* reset not asserted */
+    digitalWrite(AD9852_PIN_MRESET, LOW);
     chip_release();
     digitalWrite(AD9852_PIN_IORESET, LOW);
     digitalWrite(AD9852_PIN_SCLK, LOW);
@@ -136,40 +135,37 @@ void ad9852::init() {
     master_reset();
     chip_release();
 
-    static const uint8_t ctrl[] = {
-        0b00010100, // 0x14
-        0b00000000 | CLOCK_MULTIPLIER, // 0x20
-        0b00000000, // 0x00
-        0b00000000, // 0x00
-    };
-
-    chip_select();
-    io_reset();
-    AD9854_SendData(REG_CONTROL, ctrl, 4);
-    delay(50);
-    io_update();
-    chip_release();
-
+    write_control();
     delay(100);
 }
 
 void ad9852::setFrequency(double freqHz) {
-    if (freqHz > FREQ_MAX) {
-        freqHz = FREQ_MAX;
-    }
-
     /* Frequency tuning word (48-bit) */
-    uint64_t ftw = (uint64_t) round(FQ * freqHz);
+    s_freq = freqHz;
+
+    uint64_t ftw = (uint64_t) round(FQ / s_mult * freqHz);
 
     chip_select();
     io_reset();
-    write_byte(REG_FREQUENCY_TUNING_WORD1); /* FREQ TUNING WORD 1 register */
+    write_byte(REG_FREQUENCY_TUNING_WORD1);
     delayMicroseconds(10);
-    /* Send 6 bytes MSB first (bits 47..0) */
     for (int shift = 40; shift >= 0; shift -= 8) {
         write_byte((uint8_t) (ftw >> shift));
     }
-    write_byte(0x00); /* trailing pad byte, matches original */
+    write_byte(0x00);
     io_update();
     chip_release();
+}
+
+void ad9852::setMultiplier(uint8_t mult) {
+    if (mult < 1) mult = 1;
+    if (mult > 15) mult = 15;
+    s_mult = mult;
+    write_control();
+    delay(50); // wait for PLL to relock
+    setFrequency(s_freq); // re-tune FTW for new SYSCLK, keeping output freq constant
+}
+
+uint8_t ad9852::getMultiplier() {
+    return s_mult;
 }

@@ -85,6 +85,47 @@
             margin-top: 10px
         }
 
+         #mult-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 14px
+        }
+
+        .mbtn {
+            background: #0a0a0a;
+            color: #0cf;
+            border: 1px solid #333;
+            border-radius: 5px;
+            width: 28px;
+            height: 28px;
+            font-size: 1.1em;
+            line-height: 1;
+            cursor: pointer;
+            transition: border-color .1s
+        }
+
+        .mbtn:hover {
+            border-color: #0cf
+        }
+
+        .mbtn:disabled {
+            color: #1a3a4a;
+            border-color: #222;
+            cursor: default
+        }
+
+        #mult-lbl {
+            color: #555;
+            font-size: .85em;
+            min-width: 52px
+        }
+
+        #mult-lbl span {
+            color: #0cf
+        }
+
         #st {
             height: 16px;
             font-size: .75em;
@@ -96,14 +137,22 @@
 <body>
 <div class="card">
     <h1>AD9852 DDS</h1>
-    <p class="sub">SYSCLK = 66.667 MHz &bull; max &asymp; 26.7 MHz</p>
+    <p class="sub" id="sub">REFCLK = 20 MHz</p>
     <div id="disp"></div>
     <div id="unit">Hz</div>
+    <div id="mult-row">
+        <button class="mbtn" id="mult-dn">−</button>
+        <div id="mult-lbl">PLL ×<span id="mult-val">8</span></div>
+        <button class="mbtn" id="mult-up">+</button>
+    </div>
     <div id="st"></div>
 </div>
 <script>
     const P = [1e7, 1e6, 1e5, 1e4, 1e3, 100, 10, 1];
-    const MAX = 26666800, MIN = 1;
+    const MIN = 1;
+    const REFCLK = 20e6;
+    let mult = 8;
+    let MAX = REFCLK * mult * 0.4;
     let freq = 100000, tmr, stTmr;
 
     function build() {
@@ -175,15 +224,48 @@
         stTmr = setTimeout(() => el.textContent = '', 1500);
     }
 
+    function applyMult(m) {
+        mult = Math.max(1, Math.min(15, m));
+        MAX = Math.min(99999999, REFCLK * mult * 0.4);
+        freq = Math.min(MAX, Math.max(MIN, freq));
+        document.getElementById('mult-val').textContent = mult;
+        document.getElementById('mult-dn').disabled = (mult <= 1);
+        document.getElementById('mult-up').disabled = (mult >= 15);
+        const sysclk = (REFCLK * mult / 1e6).toFixed(0);
+        const maxMhz = (MAX / 1e6).toFixed(1);
+        document.getElementById('sub').textContent =
+            'REFCLK = 20 MHz  •  SYSCLK = ' + sysclk + ' MHz  •  max ≈ ' + maxMhz + ' MHz';
+        render();
+    }
+
+    function sendMult() {
+        fetch('/api/multiplier', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: 'mult=' + mult
+        }).then(r => showSt(r.ok ? '&#10003;' : '!')).catch(() => showSt('err'));
+    }
+
+    document.getElementById('mult-dn').addEventListener('click', () => {
+        applyMult(mult - 1);
+        sendMult();
+    });
+    document.getElementById('mult-up').addEventListener('click', () => {
+        applyMult(mult + 1);
+        sendMult();
+    });
+
     build();
+
     fetch('/api/freq').then(r => r.text()).then(t => {
         const v = parseFloat(t);
-        if (v > 0) {
-            freq = v;
-            render();
-        }
-    }).catch(() => {
-    });
+        if (v > 0) { freq = v; render(); }
+    }).catch(() => {});
+
+    fetch('/api/multiplier').then(r => r.text()).then(t => {
+        const v = parseInt(t);
+        if (v >= 1 && v <= 15) applyMult(v);
+    }).catch(() => {});
 </script>
 </body>
 </html>

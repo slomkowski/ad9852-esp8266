@@ -27,6 +27,19 @@ static void handle_api_freq() {
     server.send(200, "text/plain", String(currentFrequency, 0));
 }
 
+static void handle_get_multiplier() {
+    server.send(200, "text/plain", String(ad9852::getMultiplier()));
+}
+
+static void handle_set_multiplier() {
+    if (server.hasArg("mult")) {
+        uint8_t m = (uint8_t)constrain(server.arg("mult").toInt(), 1, 15);
+        ad9852::setMultiplier(m);
+        Serial.printf("Multiplier set to %d\n", ad9852::getMultiplier());
+    }
+    server.send(200, "text/plain", "ok");
+}
+
 static void handle_set_freq() {
     if (server.hasArg("freq")) {
         double v = server.arg("freq").toDouble();
@@ -79,6 +92,8 @@ void setup() {
     server.on("/", HTTP_GET, handle_root);
     server.on("/api/freq", HTTP_GET, handle_api_freq);
     server.on("/api/freq", HTTP_POST, handle_set_freq);
+    server.on("/api/multiplier", HTTP_GET, handle_get_multiplier);
+    server.on("/api/multiplier", HTTP_POST, handle_set_multiplier);
     server.onNotFound([]() {
         server.sendHeader("Location", "/");
         server.send(303);
