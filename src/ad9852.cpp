@@ -1,6 +1,13 @@
-#include "ad9852.h"
+#include "ad9852.hpp"
 #include <Arduino.h>
 #include <math.h>
+
+#define AD9852_PIN_MRESET   12
+#define AD9852_PIN_SCB      15
+#define AD9852_PIN_IORESET  13
+#define AD9852_PIN_SCLK     2
+#define AD9852_PIN_IOUD     4
+#define AD9852_PIN_SDIO     5
 
 // TODO PROPER NAMES
 #define REG_PHASE_ADJUST_REGISTER1				0x00
@@ -110,38 +117,13 @@ static void master_reset() {
     delay(100);
 }
 
-void ad9852_init(void) {
+void ad9852::init() {
     pinMode(AD9852_PIN_MRESET, OUTPUT);
     pinMode(AD9852_PIN_SCB, OUTPUT);
     pinMode(AD9852_PIN_IORESET, OUTPUT);
     pinMode(AD9852_PIN_SCLK, OUTPUT);
     pinMode(AD9852_PIN_SDIO, OUTPUT);
     pinMode(AD9852_PIN_IOUD, OUTPUT);
-
-    // digitalWrite(AD9852_PIN_MRESET, HIGH); /* reset not asserted */
-    // chip_release();
-    // digitalWrite(AD9852_PIN_IORESET, HIGH);
-    // digitalWrite(AD9852_PIN_SCLK, HIGH);
-    // digitalWrite(AD9852_PIN_SDIO, HIGH);
-    // digitalWrite(AD9852_PIN_IOUD, HIGH);
-
-    // while (true) {
-    //     digitalWrite(AD9852_PIN_MRESET, HIGH); /* reset not asserted */
-    //     chip_release();
-    //     digitalWrite(AD9852_PIN_IORESET, HIGH);
-    //     digitalWrite(AD9852_PIN_SCLK, HIGH);
-    //     digitalWrite(AD9852_PIN_SDIO, HIGH);
-    //     digitalWrite(AD9852_PIN_IOUD, HIGH);
-    //     delay(1);
-    //
-    //     digitalWrite(AD9852_PIN_MRESET, LOW); /* reset not asserted */
-    //     chip_select();
-    //     digitalWrite(AD9852_PIN_IORESET, LOW);
-    //     digitalWrite(AD9852_PIN_SCLK, LOW);
-    //     digitalWrite(AD9852_PIN_SDIO, LOW);
-    //     digitalWrite(AD9852_PIN_IOUD, LOW);
-    //     delay(1);
-    // }
 
     digitalWrite(AD9852_PIN_MRESET, LOW); /* reset not asserted */
     chip_release();
@@ -169,36 +151,15 @@ void ad9852_init(void) {
     chip_release();
 
     delay(100);
-    ad9852_read_control_reg();
 }
 
-uint32_t ad9852_read_control_reg(void) {
-    uint8_t ctrl[4] = {0x99, 0x99, 0x99, 0x99};
-
-    chip_select();
-    io_reset();
-    write_byte(0x87); /* register 0x07 with read bit (MSB) set */
-    io_update();
-    delayMicroseconds(10);
-    for (size_t i = 0; i < 4; i++) {
-        ctrl[i] = read_byte();
-    }
-    chip_release();
-
-    Serial.printf("AD9852 CTRL: 0x%02X 0x%02X 0x%02X 0x%02X\n",
-                  ctrl[0], ctrl[1], ctrl[2], ctrl[3]);
-
-    return ((uint32_t) ctrl[0] << 24) | ((uint32_t) ctrl[1] << 16) |
-           ((uint32_t) ctrl[2] << 8) | (uint32_t) ctrl[3];
-}
-
-void ad9852_set_freq(double fre) {
-    if (fre > FREQ_MAX) {
-        fre = FREQ_MAX;
+void ad9852::setFrequency(double freqHz) {
+    if (freqHz > FREQ_MAX) {
+        freqHz = FREQ_MAX;
     }
 
     /* Frequency tuning word (48-bit) */
-    uint64_t ftw = (uint64_t) round(FQ * fre);
+    uint64_t ftw = (uint64_t) round(FQ * freqHz);
 
     chip_select();
     io_reset();

@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>AD9852 DDS</title>
+    <style>
+        * {
+            box-sizing: border-box
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background: #111;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh
+        }
+
+        .card {
+            background: #1c1c1c;
+            border-radius: 12px;
+            padding: 32px 36px;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, .5);
+            text-align: center
+        }
+
+        h1 {
+            margin: 0 0 4px;
+            font-size: 1.3em;
+            color: #ddd
+        }
+
+        .sub {
+            color: #555;
+            font-size: .78em;
+            margin: 0 0 24px
+        }
+
+        #disp {
+            display: flex;
+            align-items: center;
+            gap: 3px;
+            justify-content: center
+        }
+
+        .d {
+            font: bold 2.6em/1 monospace;
+            color: #0cf;
+            background: #0a0a0a;
+            border: 1px solid #333;
+            border-radius: 5px;
+            width: 48px;
+            height: 64px;
+            line-height: 64px;
+            text-align: center;
+            cursor: ns-resize;
+            user-select: none;
+            outline: none;
+            transition: border-color .1s, color .1s
+        }
+
+        .d:hover, .d:focus {
+            border-color: #0cf;
+            color: #fff
+        }
+
+        .d.dim {
+            color: #1a3a4a
+        }
+
+        .sep {
+            color: #333;
+            font-size: 2em;
+            line-height: 64px;
+            padding: 0 1px;
+            user-select: none
+        }
+
+        #unit {
+            color: #555;
+            font-size: .85em;
+            margin-top: 10px
+        }
+
+        #st {
+            height: 16px;
+            font-size: .75em;
+            color: #555;
+            margin-top: 8px
+        }
+    </style>
+</head>
+<body>
+<div class="card">
+    <h1>AD9852 DDS</h1>
+    <p class="sub">SYSCLK = 66.667 MHz &bull; max &asymp; 26.7 MHz</p>
+    <div id="disp"></div>
+    <div id="unit">Hz</div>
+    <div id="st"></div>
+</div>
+<script>
+    const P = [1e7, 1e6, 1e5, 1e4, 1e3, 100, 10, 1];
+    const MAX = 26666800, MIN = 1;
+    let freq = 100000, tmr, stTmr;
+
+    function build() {
+        const d = document.getElementById('disp');
+        for (let i = 0; i < 8; i++) {
+            if (i === 2 || i === 5) {
+                const s = document.createElement('span');
+                s.className = 'sep';
+                s.textContent = '.';
+                d.appendChild(s);
+            }
+            const el = document.createElement('span');
+            el.className = 'd';
+            el.tabIndex = 0;
+            el.dataset.i = i;
+            el.addEventListener('wheel', onWheel, {passive: false});
+            el.addEventListener('keydown', onKey);
+            d.appendChild(el);
+        }
+        render();
+    }
+
+    function render() {
+        const s = String(Math.round(freq)).padStart(8, '0');
+        let leading = true;
+        document.querySelectorAll('.d').forEach((el, i) => {
+            el.textContent = s[i];
+            if (s[i] !== '0') leading = false;
+            el.classList.toggle('dim', leading && i < 7);
+        });
+    }
+
+    function nudge(i, dir) {
+        freq = Math.min(MAX, Math.max(MIN, freq + dir * P[i]));
+        render();
+        clearTimeout(tmr);
+        tmr = setTimeout(send, 250);
+    }
+
+    function onWheel(e) {
+        e.preventDefault();
+        nudge(+this.dataset.i, e.deltaY < 0 ? 1 : -1);
+    }
+
+    function onKey(e) {
+        if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            nudge(+this.dataset.i, 1);
+        } else if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            nudge(+this.dataset.i, -1);
+        }
+    }
+
+    function send() {
+        fetch('/api/freq', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: 'freq=' + Math.round(freq)
+        }).then(r => {
+            showSt(r.ok ? '&#10003;' : '!');
+        }).catch(() => showSt('err'));
+    }
+
+    function showSt(msg) {
+        const el = document.getElementById('st');
+        el.innerHTML = msg;
+        clearTimeout(stTmr);
+        stTmr = setTimeout(() => el.textContent = '', 1500);
+    }
+
+    build();
+    fetch('/api/freq').then(r => r.text()).then(t => {
+        const v = parseFloat(t);
+        if (v > 0) {
+            freq = v;
+            render();
+        }
+    }).catch(() => {
+    });
+</script>
+</body>
+</html>
