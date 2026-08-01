@@ -25,17 +25,16 @@
 /* Reference clock fed to the AD9852. SYSCLK = AD9852_REFCLK_HZ * multiplier. */
 static constexpr uint32_t AD9852_REFCLK_HZ = 20000000UL;
 
-/* 2^48 as a compile-time constant — avoids runtime pow() call */
-static const double FQ = pow(2.0, 48.0) / static_cast<double>(AD9852_REFCLK_HZ);
+/* 2^48 / REFCLK — initialised in init() so it stays in DRAM, not IROM */
+static double FQ;
 
 
 /* Runtime state */
-static uint8_t s_mult = 8;
-static double s_freq = 0.0;
+static uint8_t currentMultiplier = 8;
+static double currentFrequency2 = 0.0;
 
 
 static void writeByte(const uint8_t data) {
-    pinMode(AD9852_PIN_SDIO, OUTPUT);
     digitalWrite(AD9852_PIN_SCLK, LOW);
 
     for (int i = 7; i >= 0; i--) {
@@ -72,9 +71,9 @@ static void ioUpdate() {
 
 static void masterReset() {
     digitalWrite(AD9852_PIN_MRESET, HIGH);
-    delay(10);
+    delayMicroseconds(500);
     digitalWrite(AD9852_PIN_MRESET, LOW);
-    delay(10);
+    delayMicroseconds(500);
 }
 
 void writeData(const u8 reg, u8 const *data, const u8 byteNum) {
@@ -85,24 +84,57 @@ void writeData(const u8 reg, u8 const *data, const u8 byteNum) {
     }
 }
 
-static void writeToControlRegister() {
-    const bool bypass = (s_mult == 1);
+static void writeToControlRegister() { // todo dla ustawienia 1 to powoduje bałagan
+    uint8_t tuningByte;
+    if (currentMultiplier == 1) {
+        tuningByte = 0b00100111;
+    } else if (currentMultiplier >= 10) {
+        tuningByte = 0b01000000 | currentMultiplier;
+    } else {
+        tuningByte = 0b00000000 | currentMultiplier;
+    }
 
     const uint8_t ctrl[4] = {
         0b00010100,
-        static_cast<uint8_t>(bypass ? 0b100000 : s_mult),
+        tuningByte,
         0b00000000,
         0b00000000,
     };
 
     chipSelect();
     writeData(REG_CONTROL, ctrl, 4);
-    delay(1);
     ioUpdate();
     chipRelease();
 }
 
+static void writeToControlRegister2() { // todo dla ustawienia 1 to powoduje bałagan
+    uint8_t tuningByte;
+    if (currentMultiplier == 1) {
+        tuningByte = 0b00100111;
+    } else if (currentMultiplier >= 10) {
+        tuningByte = 0b01000000 | currentMultiplier;
+    } else {
+        tuningByte = 0b00000000 | currentMultiplier;
+    }
+
+    const uint8_t ctrl[4] = {
+        0b00010100,
+        tuningByte,
+        0b00000000,
+        0b00000000,
+    };
+
+    chipSelect();
+    Serial.printf("%x %x %x %x\n", ctrl[0], ctrl[1], ctrl[2], ctrl[3]);
+    writeData(REG_CONTROL, ctrl, 4);
+    ioUpdate();
+    chipRelease();
+    Serial.printf("%x %x %x %x\n", ctrl[0], ctrl[1], ctrl[2], ctrl[3]);
+}
+
 void ad9852::init() {
+    FQ = ldexp(1.0, 48) / static_cast<double>(AD9852_REFCLK_HZ);
+
     pinMode(AD9852_PIN_MRESET, OUTPUT);
     pinMode(AD9852_PIN_SCB, OUTPUT);
     pinMode(AD9852_PIN_IORESET, OUTPUT);
@@ -122,14 +154,14 @@ void ad9852::init() {
     chipRelease();
 
     writeToControlRegister();
-    delay(100);
 }
 
 void ad9852::setFrequency(double freqHz) {
-    /* Frequency tuning word (48-bit) */
-    s_freq = freqHz;
-
-    uint64_t ftw = (uint64_t) round(FQ / s_mult * freqHz);
+    const double maxFreq = static_cast<double>(AD9852_REFCLK_HZ) * currentMultiplier * 0.4;
+    if (freqHz > maxFreq) freqHz = maxFreq;
+    if (freqHz < 1.0) freqHz = 1.0;
+    currentFrequency2 = freqHz;
+    const uint64_t ftw = static_cast<uint64_t>(round((FQ / currentMultiplier) * freqHz));
 
     chipSelect();
     ioReset();
@@ -144,19 +176,19 @@ void ad9852::setFrequency(double freqHz) {
 }
 
 double ad9852::getFrequency() {
-    return s_freq;
+    return currentFrequency2;
 }
 
-void ad9852::setMultiplier(int mult) {
-    if (mult == 1) s_mult = 1; // PLL bypass
-    else if (mult < 4) s_mult = 4; // clamp up to valid PLL minimum
-    else if (mult > 15) s_mult = 15; // clamp down to valid PLL maximum
-    else s_mult = (uint8_t) mult;
-    writeToControlRegister();
-    delay(50); // wait for PLL to relock
-    setFrequency(s_freq); // re-tune FTW for new SYSCLK, keeping output freq constant
+void ad9852::setMultiplier(const int mult) {
+    if (mult == 1) currentMultiplier = 1; // PLL bypass
+    else if (mult < 4) currentMultiplier = 4; // clamp up to valid PLL minimum
+    else if (mult > 15) currentMultiplier = 15; // clamp down to valid PLL maximum
+    else currentMultiplier = static_cast<uint8_t>(mult);
+
+    writeToControlRegister2();
+    setFrequency(currentFrequency2); // re-tune FTW for new SYSCLK, keeping output freq constant
 }
 
 int ad9852::getMultiplier() {
-    return s_mult;
+    return currentMultiplier;
 }

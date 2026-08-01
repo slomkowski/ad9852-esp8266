@@ -82,6 +82,8 @@ void setup() {
         Serial.print(++i);
         Serial.print(' ');
     }
+    WiFi.setAutoReconnect(true);
+    WiFi.persistent(true);
 
     Serial.println('\n');
     Serial.println("Connection established!");
