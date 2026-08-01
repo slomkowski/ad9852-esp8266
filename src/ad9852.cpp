@@ -34,7 +34,7 @@ static uint8_t s_mult = 8;
 static double s_freq = 0.0;
 
 
-static void write_byte(const uint8_t data) {
+static void writeByte(const uint8_t data) {
     pinMode(AD9852_PIN_SDIO, OUTPUT);
     digitalWrite(AD9852_PIN_SCLK, LOW);
 
@@ -48,72 +48,56 @@ static void write_byte(const uint8_t data) {
     }
 }
 
-static uint8_t read_byte() {
-    uint8_t data = 0;
-    pinMode(AD9852_PIN_SDIO, INPUT);
-    digitalWrite(AD9852_PIN_SCLK, LOW);
-
-    for (int i = 7; i >= 0; i--) {
-        digitalWrite(AD9852_PIN_SCLK, HIGH);
-        delayMicroseconds(1);
-        data |= (digitalRead(AD9852_PIN_SDIO) << i);
-        digitalWrite(AD9852_PIN_SCLK, LOW);
-        delayMicroseconds(1);
-    }
-    pinMode(AD9852_PIN_SDIO, OUTPUT);
-    return data;
-}
-
-static void io_reset() {
+static void ioReset() {
     digitalWrite(AD9852_PIN_IORESET, HIGH);
-    delay(1);
+    delayMicroseconds(10);
     digitalWrite(AD9852_PIN_IORESET, LOW);
     delayMicroseconds(10);
 }
 
-static void chip_select() {
+static void chipSelect() {
     digitalWrite(AD9852_PIN_SCB, LOW);
     delayMicroseconds(10);
 }
 
-static void chip_release() {
+static void chipRelease() {
     digitalWrite(AD9852_PIN_SCB, HIGH);
 }
 
-static void io_update() {
+static void ioUpdate() {
     digitalWrite(AD9852_PIN_IOUD, HIGH);
     delayMicroseconds(10);
     digitalWrite(AD9852_PIN_IOUD, LOW);
 }
 
-static void master_reset() {
+static void masterReset() {
     digitalWrite(AD9852_PIN_MRESET, HIGH);
-    delay(100);
+    delay(10);
     digitalWrite(AD9852_PIN_MRESET, LOW);
-    delay(100);
+    delay(10);
 }
 
-void AD9854_SendData(u8 _register, u8 const *data, u8 ByteNum) {
-    io_reset();
-    write_byte(_register);
-    for (int i = 0; i < ByteNum; i++) {
-        write_byte(data[i]);
+void writeData(const u8 reg, u8 const *data, const u8 byteNum) {
+    ioReset();
+    writeByte(reg);
+    for (u8 i = 0; i < byteNum; i++) {
+        writeByte(data[i]);
     }
 }
 
-static void write_control() {
-    uint8_t ctrl[4] = {
+static void writeToControlRegister() {
+    const uint8_t ctrl[4] = {
         0b00010100,
         s_mult,
         0b00000000,
         0b00000000,
     };
 
-    chip_select();
-    AD9854_SendData(REG_CONTROL, ctrl, 4);
-    delay(50);
-    io_update();
-    chip_release();
+    chipSelect();
+    writeData(REG_CONTROL, ctrl, 4);
+    delay(1);
+    ioUpdate();
+    chipRelease();
 }
 
 void ad9852::init() {
@@ -125,17 +109,17 @@ void ad9852::init() {
     pinMode(AD9852_PIN_IOUD, OUTPUT);
 
     digitalWrite(AD9852_PIN_MRESET, LOW);
-    chip_release();
+    chipRelease();
     digitalWrite(AD9852_PIN_IORESET, LOW);
     digitalWrite(AD9852_PIN_SCLK, LOW);
     digitalWrite(AD9852_PIN_SDIO, LOW);
     digitalWrite(AD9852_PIN_IOUD, LOW);
 
-    chip_select();
-    master_reset();
-    chip_release();
+    chipSelect();
+    masterReset();
+    chipRelease();
 
-    write_control();
+    writeToControlRegister();
     delay(100);
 }
 
@@ -145,27 +129,31 @@ void ad9852::setFrequency(double freqHz) {
 
     uint64_t ftw = (uint64_t) round(FQ / s_mult * freqHz);
 
-    chip_select();
-    io_reset();
-    write_byte(REG_FREQUENCY_TUNING_WORD1);
+    chipSelect();
+    ioReset();
+    writeByte(REG_FREQUENCY_TUNING_WORD1);
     delayMicroseconds(10);
     for (int shift = 40; shift >= 0; shift -= 8) {
-        write_byte((uint8_t) (ftw >> shift));
+        writeByte((uint8_t) (ftw >> shift));
     }
-    write_byte(0x00);
-    io_update();
-    chip_release();
+    writeByte(0x00);
+    ioUpdate();
+    chipRelease();
 }
 
-void ad9852::setMultiplier(uint8_t mult) {
+double ad9852::getFrequency() {
+    return s_freq;
+}
+
+void ad9852::setMultiplier(int mult) {
     if (mult < 1) mult = 1;
     if (mult > 15) mult = 15;
     s_mult = mult;
-    write_control();
+    writeToControlRegister();
     delay(50); // wait for PLL to relock
     setFrequency(s_freq); // re-tune FTW for new SYSCLK, keeping output freq constant
 }
 
-uint8_t ad9852::getMultiplier() {
+int ad9852::getMultiplier() {
     return s_mult;
 }

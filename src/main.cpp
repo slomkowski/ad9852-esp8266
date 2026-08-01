@@ -10,40 +10,37 @@
 static ESP8266WebServer server(80);
 static double currentFrequency = 100000; /* Hz, persists in RAM across requests */
 
-/* ---- HTTP handlers ------------------------------------------------------- */
-
-static void handle_root() {
-    File f = LittleFS.open("/index.html", "r");
+static void handleRoot() {
+    auto f = LittleFS.open("/index.html", "r");
     if (!f) {
         server.send(500, "text/plain", "index.html missing from LittleFS");
         return;
     }
-    String html = f.readString();
+    const auto html = f.readString();
     f.close();
     server.send(200, "text/html", html);
 }
 
-static void handle_api_freq() {
+static void handleApiFreq() {
     server.send(200, "text/plain", String(currentFrequency, 0));
 }
 
-static void handle_get_multiplier() {
+static void handleGetMultiplier() {
     server.send(200, "text/plain", String(ad9852::getMultiplier()));
 }
 
-static void handle_set_multiplier() {
+static void handleSetMultiplier() {
     if (server.hasArg("mult")) {
-        uint8_t m = (uint8_t)constrain(server.arg("mult").toInt(), 1, 15);
+        const int m = constrain(server.arg("mult").toInt(), 1, 15);
         ad9852::setMultiplier(m);
         Serial.printf("Multiplier set to %d\n", ad9852::getMultiplier());
     }
     server.send(200, "text/plain", "ok");
 }
 
-static void handle_set_freq() {
+static void handleSetFreq() {
     if (server.hasArg("freq")) {
-        double v = server.arg("freq").toDouble();
-        if (v > 0) {
+        if (const double v = server.arg("freq").toDouble(); v > 0) {
             currentFrequency = v;
             ad9852::setFrequency(currentFrequency);
             Serial.printf("Frequency set to %f Hz\n", currentFrequency);
@@ -89,11 +86,11 @@ void setup() {
     Serial.print("IP address:\t");
     Serial.println(WiFi.localIP());
 
-    server.on("/", HTTP_GET, handle_root);
-    server.on("/api/freq", HTTP_GET, handle_api_freq);
-    server.on("/api/freq", HTTP_POST, handle_set_freq);
-    server.on("/api/multiplier", HTTP_GET, handle_get_multiplier);
-    server.on("/api/multiplier", HTTP_POST, handle_set_multiplier);
+    server.on("/", HTTP_GET, handleRoot);
+    server.on("/api/freq", HTTP_GET, handleApiFreq);
+    server.on("/api/freq", HTTP_POST, handleSetFreq);
+    server.on("/api/multiplier", HTTP_GET, handleGetMultiplier);
+    server.on("/api/multiplier", HTTP_POST, handleSetMultiplier);
     server.onNotFound([]() {
         server.sendHeader("Location", "/");
         server.send(303);
