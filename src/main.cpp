@@ -1,6 +1,8 @@
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
+#include <ESP8266mDNS.h>
+#include <ArduinoOTA.h>
 #include <LittleFS.h>
 #include "ad9852.hpp"
 
@@ -96,9 +98,19 @@ void setup() {
         server.send(303);
     });
 
+    MDNS.begin("ad9852");
+
+    ArduinoOTA.setHostname("ad9852");
+    ArduinoOTA.setPassword(secrets::otaPassword);
+    ArduinoOTA.begin();
+
+    MDNS.addService("http", "tcp", 80);
     server.begin();
+    Serial.println("Ready — http://ad9852.local");
 }
 
 void loop() {
+    ArduinoOTA.handle();
+    MDNS.update();
     server.handleClient();
 }

@@ -48,8 +48,16 @@ class Handler(BaseHTTPRequestHandler):
         elif p.path == "/api/multiplier":
             if "mult" in qs:
                 v = int(qs["mult"][0])
-                mult = max(1, min(15, v))
-                print(f"  mult → ×{mult}  (SYSCLK = {20 * mult} MHz)")
+                if v == 1:
+                    mult = 1
+                elif v < 4:
+                    mult = 4
+                elif v > 15:
+                    mult = 15
+                else:
+                    mult = v
+                mode = "bypass" if mult == 1 else f"×{mult}"
+                print(f"  mult → {mode}  (SYSCLK = {20 * mult} MHz)")
             self._respond(200, "text/plain", b"ok")
 
         else:

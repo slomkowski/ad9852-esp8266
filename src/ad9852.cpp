@@ -86,9 +86,11 @@ void writeData(const u8 reg, u8 const *data, const u8 byteNum) {
 }
 
 static void writeToControlRegister() {
+    const bool bypass = (s_mult == 1);
+
     const uint8_t ctrl[4] = {
         0b00010100,
-        s_mult,
+        static_cast<uint8_t>(bypass ? 0b100000 : s_mult),
         0b00000000,
         0b00000000,
     };
@@ -146,9 +148,10 @@ double ad9852::getFrequency() {
 }
 
 void ad9852::setMultiplier(int mult) {
-    if (mult < 1) mult = 1;
-    if (mult > 15) mult = 15;
-    s_mult = mult;
+    if (mult == 1) s_mult = 1; // PLL bypass
+    else if (mult < 4) s_mult = 4; // clamp up to valid PLL minimum
+    else if (mult > 15) s_mult = 15; // clamp down to valid PLL maximum
+    else s_mult = (uint8_t) mult;
     writeToControlRegister();
     delay(50); // wait for PLL to relock
     setFrequency(s_freq); // re-tune FTW for new SYSCLK, keeping output freq constant

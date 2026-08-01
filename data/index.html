@@ -224,17 +224,24 @@
         stTmr = setTimeout(() => el.textContent = '', 1500);
     }
 
+    // Valid multipliers: 1 (PLL bypass) and 4..20. Steps skip 2 and 3.
+    function nextMult(m, dir) {
+        if (dir > 0) return (m === 1) ? 4 : Math.min(15, m + 1);
+        else         return (m <= 4)  ? 1 : Math.max(4,  m - 1);
+    }
+
     function applyMult(m) {
-        mult = Math.max(1, Math.min(15, m));
+        mult = m;
         MAX = Math.min(99999999, REFCLK * mult * 0.4);
         freq = Math.min(MAX, Math.max(MIN, freq));
         document.getElementById('mult-val').textContent = mult;
-        document.getElementById('mult-dn').disabled = (mult <= 1);
+        document.getElementById('mult-dn').disabled = (mult === 1);
         document.getElementById('mult-up').disabled = (mult >= 15);
         const sysclk = (REFCLK * mult / 1e6).toFixed(0);
         const maxMhz = (MAX / 1e6).toFixed(1);
+        const mode = (mult === 1) ? 'bypass' : ('×' + mult);
         document.getElementById('sub').textContent =
-            'REFCLK = 20 MHz  •  SYSCLK = ' + sysclk + ' MHz  •  max ≈ ' + maxMhz + ' MHz';
+            'REFCLK = 20 MHz  •  SYSCLK = ' + sysclk + ' MHz (' + mode + ')  •  max ≈ ' + maxMhz + ' MHz';
         render();
     }
 
@@ -247,11 +254,11 @@
     }
 
     document.getElementById('mult-dn').addEventListener('click', () => {
-        applyMult(mult - 1);
+        applyMult(nextMult(mult, -1));
         sendMult();
     });
     document.getElementById('mult-up').addEventListener('click', () => {
-        applyMult(mult + 1);
+        applyMult(nextMult(mult, +1));
         sendMult();
     });
 
@@ -264,7 +271,7 @@
 
     fetch('/api/multiplier').then(r => r.text()).then(t => {
         const v = parseInt(t);
-        if (v >= 1 && v <= 15) applyMult(v);
+        if (v === 1 || (v >= 4 && v <= 15)) applyMult(v);
     }).catch(() => {});
 </script>
 </body>
