@@ -19,7 +19,14 @@ pio device monitor
 
 # Build + upload + monitor in one step
 pio run --target upload && pio device monitor
+
+# Flash over-the-air (device advertises itself via mDNS/OTA as "ad9852")
+pio run --target upload --upload-port ad9852.local
 ```
+
+Once running, the UI is reachable at `http://ad9852.local` (mDNS). OTA (`ArduinoOTA`,
+hostname `ad9852`) is guarded by `otaPassword` in `secrets.hpp`. `platformio.ini`
+declares no OTA config, so an OTA flash must pass `--upload-port` explicitly.
 
 ## Testing the frontend locally
 
@@ -46,12 +53,12 @@ Firmware for controlling an **AD9852 DDS (Direct Digital Synthesis)** chip via a
 | GET    | `/`               | —               | Serves `data/index.html` from LittleFS |
 | GET    | `/api/freq`       | —               | Returns current frequency (Hz, plain text) |
 | POST   | `/api/freq`       | `freq=<hz>`     | Sets output frequency                |
-| GET    | `/api/multiplier` | —               | Returns current PLL multiplier (1–15) |
+| GET    | `/api/multiplier` | —               | Returns current PLL multiplier (1, or 4–15) |
 | POST   | `/api/multiplier` | `mult=<n>`      | Sets multiplier; re-tunes FTW to keep output frequency constant |
 
 **DDS frequency math:**
 - REFCLK = 20 MHz (fed to AD9852 reference input)
-- SYSCLK = REFCLK × multiplier (PLL enabled, multiplier 1–15, valid hardware range 4–20)
+- SYSCLK = REFCLK × multiplier. Accepted multipliers are `1` (PLL bypass) and `4–15`; `setMultiplier()` clamps 2–3 up to 4 and >15 down to 15 (datasheet PLL range is 4–20). The frontend's `nextMult()` skips 2 and 3.
 - 48-bit FTW = `round(freq_hz × 2^48 / SYSCLK)`
 - `FQ = 2^48 / REFCLK_HZ` (precomputed constant); actual FTW = `round(FQ / mult × freq_hz)`
 - Output clamped to `SYSCLK × 0.4`; frontend caps display at 99,999,999 Hz
@@ -69,7 +76,7 @@ Firmware for controlling an **AD9852 DDS (Direct Digital Synthesis)** chip via a
 
 **SPI transaction sequence:** `chip_select()` → `io_reset()` → write address byte → write data bytes → `io_update()` → `chip_release()`.
 
-**Multiplier change sequence:** write new control register → 50 ms PLL relock delay → rewrite FTW computed for new SYSCLK.
+**Multiplier change sequence:** `setMultiplier()` writes the new control register (`writeToControlRegister2()`) then immediately rewrites the FTW for the new SYSCLK via `setFrequency()`. There is **no** PLL-relock settle delay between the two — the earlier `delay(50)` was removed in commit `0ecd25d`. The control byte for `mult=1` is `0b00100111` (bit 5 = PLL bypass); for `mult ≥ 10` bit 6 (PLL range) is also set. The `// todo dla ustawienia 1 to powoduje bałagan` comment flags mult=1 (PLL-bypass) as a known-unstable path.
 
 **Flash layout:**
 - Firmware: uploaded via `pio run --target upload`

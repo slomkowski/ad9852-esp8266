@@ -1,6 +1,5 @@
 #include "ad9852.hpp"
 #include <Arduino.h>
-#include <math.h>
 
 #define AD9852_PIN_MRESET   12
 #define AD9852_PIN_SCB      15
@@ -84,7 +83,8 @@ void writeData(const u8 reg, u8 const *data, const u8 byteNum) {
     }
 }
 
-static void writeToControlRegister() { // todo dla ustawienia 1 to powoduje bałagan
+static void writeToControlRegister() {
+    // todo dla ustawienia 1 to powoduje bałagan
     uint8_t tuningByte;
     if (currentMultiplier == 1) {
         tuningByte = 0b00100111;
@@ -107,7 +107,8 @@ static void writeToControlRegister() { // todo dla ustawienia 1 to powoduje bał
     chipRelease();
 }
 
-static void writeToControlRegister2() { // todo dla ustawienia 1 to powoduje bałagan
+static void writeToControlRegister2() {
+    // todo dla ustawienia 1 to powoduje bałagan
     uint8_t tuningByte;
     if (currentMultiplier == 1) {
         tuningByte = 0b00100111;
@@ -125,11 +126,9 @@ static void writeToControlRegister2() { // todo dla ustawienia 1 to powoduje ba�
     };
 
     chipSelect();
-    Serial.printf("%x %x %x %x\n", ctrl[0], ctrl[1], ctrl[2], ctrl[3]);
     writeData(REG_CONTROL, ctrl, 4);
     ioUpdate();
     chipRelease();
-    Serial.printf("%x %x %x %x\n", ctrl[0], ctrl[1], ctrl[2], ctrl[3]);
 }
 
 void ad9852::init() {
