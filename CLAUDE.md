@@ -19,14 +19,39 @@ pio device monitor
 
 # Build + upload + monitor in one step
 pio run --target upload && pio device monitor
-
-# Flash over-the-air (device advertises itself via mDNS/OTA as "ad9852")
-pio run --target upload --upload-port ad9852.local
 ```
 
-Once running, the UI is reachable at `http://ad9852.local` (mDNS). OTA (`ArduinoOTA`,
-hostname `ad9852`) is guarded by `otaPassword` in `secrets.hpp`. `platformio.ini`
-declares no OTA config, so an OTA flash must pass `--upload-port` explicitly.
+**OTA (over-the-air) updates** use **ElegantOTA** (`ayushsharma82/ElegantOTA`,
+sync mode on the existing `ESP8266WebServer`), not espota/`pio ... upload`.
+
+Command-line (builds + pushes over the air, auto-reboots, waits for the device
+to return between steps):
+
+```bash
+pio run -t ota        # firmware AND filesystem
+pio run -t ota-fw     # firmware only
+pio run -t ota-fs     # LittleFS image only
+# equivalently: tools/ota.sh [all|fw|fs]
+```
+
+These custom targets (registered by `extra_scripts = tools/ota_targets.py`) call
+`tools/ota.sh`, which drives ElegantOTA's HTTP endpoints with `curl`:
+`GET /ota/start?mode=<fr|fs>&hash=<md5>` then `POST /ota/upload`. The script reads
+`OTA_HOST`/`OTA_USER`/`OTA_PASS` from the environment, defaulting the password to
+the `[ota] password` in `platformio.ini`.
+
+Browser alternative: open `http://ad9852.local/update`, log in (`admin` + OTA
+password), upload `.pio/build/esp07/firmware.bin` or `littlefs.bin`.
+
+Once running, the UI is at `http://ad9852.local` (mDNS). The `/update` page and
+`/ota/*` endpoints are guarded by HTTP Basic auth (`admin` + the OTA password).
+That password lives in **one** place — the `[ota] password` key in
+`platformio.ini` — and is injected into the firmware as the `OTA_PASSWORD` string
+macro via `build_flags`.
+
+> First OTA after a fresh **serial** flash may report `ERROR[11]: Invalid
+> bootstrapping state` — this is an ESP8266 `Update`-library quirk; power-cycle
+> the board once and OTA works thereafter.
 
 ## Testing the frontend locally
 
@@ -86,6 +111,6 @@ Firmware for controlling an **AD9852 DDS (Direct Digital Synthesis)** chip via a
 ## Notes
 
 - Directory is named `ad9854-esp8266` but the chip and all code target the **AD9852**.
-- `secrets.hpp` is gitignored. Copy `secrets.example.hpp`, fill in Wi-Fi SSID/password and OTA password.
+- `secrets.hpp` is gitignored and holds only the Wi-Fi SSID/password. Copy `secrets.example.hpp` and fill those in. The OTA password is **not** here — it lives in `platformio.ini` (`[ota] password`), which is tracked by git.
 - Do not use `static const` arrays in driver code — the ESP8266 linker places them in IROM (flash), and byte-level access via a pointer causes Exception 3. Use plain local arrays instead.
 - The `ctrl[]` array in `write_control()` is intentionally a stack-local (DRAM) variable for this reason.

@@ -2,7 +2,7 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include <ESP8266mDNS.h>
-#include <ArduinoOTA.h>
+#include <ElegantOTA.h>
 #include <LittleFS.h>
 #include "ad9852.hpp"
 
@@ -102,17 +102,19 @@ void setup() {
 
     MDNS.begin("ad9852");
 
-    ArduinoOTA.setHostname("ad9852");
-    ArduinoOTA.setPassword(secrets::otaPassword);
-    ArduinoOTA.begin();
+    // Browser-based OTA at http://ad9852.local/update, guarded by the OTA
+    // password injected from platformio.ini [ota] section. Pass the credentials
+    // to begin() directly — it calls setAuth() internally, so a separate
+    // setAuth() before begin() would be overwritten with empty defaults.
+    ElegantOTA.begin(&server, "admin", OTA_PASSWORD);
 
     MDNS.addService("http", "tcp", 80);
     server.begin();
-    Serial.println("Ready — http://ad9852.local");
+    Serial.println("Ready — http://ad9852.local  (OTA: /update)");
 }
 
 void loop() {
-    ArduinoOTA.handle();
     MDNS.update();
     server.handleClient();
+    ElegantOTA.loop();
 }
