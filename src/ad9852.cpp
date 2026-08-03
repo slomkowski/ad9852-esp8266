@@ -29,7 +29,7 @@ static double FQ;
 
 
 /* Runtime state */
-static uint8_t currentMultiplier = 8;
+static uint8_t currentMultiplier = 5;
 static double currentFrequency2 = 0.0;
 
 
@@ -84,39 +84,10 @@ void writeData(const u8 reg, u8 const *data, const u8 byteNum) {
 }
 
 static void writeToControlRegister() {
-    // todo dla ustawienia 1 to powoduje bałagan
-    uint8_t tuningByte;
-    if (currentMultiplier == 1) {
-        tuningByte = 0b00100111;
-    } else if (currentMultiplier >= 10) {
-        tuningByte = 0b01000000 | currentMultiplier;
-    } else {
-        tuningByte = 0b00000000 | currentMultiplier;
-    }
-
-    const uint8_t ctrl[4] = {
-        0b00010100,
-        tuningByte,
-        0b00000000,
-        0b00000000,
-    };
-
-    chipSelect();
-    writeData(REG_CONTROL, ctrl, 4);
-    ioUpdate();
-    chipRelease();
-}
-
-static void writeToControlRegister2() {
-    // todo dla ustawienia 1 to powoduje bałagan
-    uint8_t tuningByte;
-    if (currentMultiplier == 1) {
-        tuningByte = 0b00100111;
-    } else if (currentMultiplier >= 10) {
-        tuningByte = 0b01000000 | currentMultiplier;
-    } else {
-        tuningByte = 0b00000000 | currentMultiplier;
-    }
+    // PLL enabled, multiplier 4-15; bit 6 selects the high VCO range for mult >= 10
+    const uint8_t tuningByte = (currentMultiplier >= 10)
+                                   ? (0b01000000 | currentMultiplier)
+                                   : currentMultiplier;
 
     const uint8_t ctrl[4] = {
         0b00010100,
@@ -179,12 +150,11 @@ double ad9852::getFrequency() {
 }
 
 void ad9852::setMultiplier(const int mult) {
-    if (mult == 1) currentMultiplier = 1; // PLL bypass
-    else if (mult < 4) currentMultiplier = 4; // clamp up to valid PLL minimum
+    if (mult < 4) currentMultiplier = 4; // clamp up to valid PLL minimum
     else if (mult > 15) currentMultiplier = 15; // clamp down to valid PLL maximum
     else currentMultiplier = static_cast<uint8_t>(mult);
 
-    writeToControlRegister2();
+    writeToControlRegister();
     setFrequency(currentFrequency2); // re-tune FTW for new SYSCLK, keeping output freq constant
 }
 

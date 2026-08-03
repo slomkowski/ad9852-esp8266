@@ -10,7 +10,7 @@ PORT = 8378
 HTML = Path(__file__).parent / "data" / "index.html"
 
 freq = 100_000.0
-mult = 8
+mult = 5
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -48,16 +48,13 @@ class Handler(BaseHTTPRequestHandler):
         elif p.path == "/api/multiplier":
             if "mult" in qs:
                 v = int(qs["mult"][0])
-                if v == 1:
-                    mult = 1
-                elif v < 4:
+                if v < 4:
                     mult = 4
                 elif v > 15:
                     mult = 15
                 else:
                     mult = v
-                mode = "bypass" if mult == 1 else f"×{mult}"
-                print(f"  mult → {mode}  (SYSCLK = {20 * mult} MHz)")
+                print(f"  mult → ×{mult}  (SYSCLK = {20 * mult} MHz)")
             self._respond(200, "text/plain", b"ok")
 
         else:

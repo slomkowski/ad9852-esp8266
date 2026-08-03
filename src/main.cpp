@@ -10,7 +10,7 @@
 
 
 static ESP8266WebServer server(80);
-static double currentFrequency = 100000; /* Hz, persists in RAM across requests */
+static double currentFrequency = 1500000; /* Hz, persists in RAM across requests */
 
 static void handleRoot() {
     auto f = LittleFS.open("/index.html", "r");
@@ -33,7 +33,7 @@ static void handleGetMultiplier() {
 
 static void handleSetMultiplier() {
     if (server.hasArg("mult")) {
-        const int m = constrain(server.arg("mult").toInt(), 1, 15);
+        const int m = constrain(server.arg("mult").toInt(), 4, 15);
         ad9852::setMultiplier(m);
         Serial.printf("Multiplier set to %d\n", ad9852::getMultiplier());
     }

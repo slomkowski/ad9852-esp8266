@@ -142,7 +142,7 @@
     <div id="unit">Hz</div>
     <div id="mult-row">
         <button class="mbtn" id="mult-dn">−</button>
-        <div id="mult-lbl">PLL ×<span id="mult-val">8</span></div>
+        <div id="mult-lbl">PLL ×<span id="mult-val">5</span></div>
         <button class="mbtn" id="mult-up">+</button>
     </div>
     <div id="st"></div>
@@ -151,9 +151,9 @@
     const P = [1e7, 1e6, 1e5, 1e4, 1e3, 100, 10, 1];
     const MIN = 1;
     const REFCLK = 20e6;
-    let mult = 8;
+    let mult = 5;
     let MAX = REFCLK * mult * 0.4;
-    let freq = 100000, tmr, stTmr;
+    let freq = 1500000, tmr, stTmr;
 
     function build() {
         const d = document.getElementById('disp');
@@ -224,10 +224,9 @@
         stTmr = setTimeout(() => el.textContent = '', 1500);
     }
 
-    // Valid multipliers: 1 (PLL bypass) and 4..20. Steps skip 2 and 3.
+    // Valid multipliers: 4..15 (PLL always enabled).
     function nextMult(m, dir) {
-        if (dir > 0) return (m === 1) ? 4 : Math.min(15, m + 1);
-        else         return (m <= 4)  ? 1 : Math.max(4,  m - 1);
+        return (dir > 0) ? Math.min(15, m + 1) : Math.max(4, m - 1);
     }
 
     function applyMult(m) {
@@ -235,13 +234,12 @@
         MAX = Math.min(99999999, REFCLK * mult * 0.4);
         freq = Math.min(MAX, Math.max(MIN, freq));
         document.getElementById('mult-val').textContent = mult;
-        document.getElementById('mult-dn').disabled = (mult === 1);
+        document.getElementById('mult-dn').disabled = (mult <= 4);
         document.getElementById('mult-up').disabled = (mult >= 15);
         const sysclk = (REFCLK * mult / 1e6).toFixed(0);
         const maxMhz = (MAX / 1e6).toFixed(1);
-        const mode = (mult === 1) ? 'bypass' : ('×' + mult);
         document.getElementById('sub').textContent =
-            'REFCLK = 20 MHz  •  SYSCLK = ' + sysclk + ' MHz (' + mode + ')  •  max ≈ ' + maxMhz + ' MHz';
+            'REFCLK = 20 MHz  •  SYSCLK = ' + sysclk + ' MHz (×' + mult + ')  •  max ≈ ' + maxMhz + ' MHz';
         render();
     }
 
@@ -271,7 +269,7 @@
 
     fetch('/api/multiplier').then(r => r.text()).then(t => {
         const v = parseInt(t);
-        if (v === 1 || (v >= 4 && v <= 15)) applyMult(v);
+        if (v >= 4 && v <= 15) applyMult(v);
     }).catch(() => {});
 </script>
 </body>
